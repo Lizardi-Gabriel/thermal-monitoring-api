@@ -1,8 +1,8 @@
 """
 Sistema de monitoreo térmico - FastAPI Server
-Iteración 1: Endpoints básicos con datos simulados
+Iteración 2: Conexión a base de datos MySQL
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -10,6 +10,7 @@ from datetime import datetime
 import uvicorn
 import os
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Cargar variables de entorno
 load_dotenv()
@@ -23,6 +24,12 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 CORS_ORIGINS = ["*"]  # En iteraciones futuras lo leeremos de .env
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+print(f"Configuración cargada:")
+print(f"  - Ambiente: {ENVIRONMENT}")
+print(f"  - Debug: {DEBUG}")
+print(f"  - Base de datos: {DATABASE_URL}")
 
 # Configurar aplicación FastAPI
 app = FastAPI(
@@ -41,6 +48,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# TODO: Importar conexión DB cuando esté creada
+from app.infrastructure.database.connection import getDbSession, checkDatabaseConnection
+from app.domain.entities import DetectionCreate, DetectionResponse, WeatherDataCreate, WeatherDataResponse
+from app.infrastructure.database.models import DetectionModel, WeatherModel
 
 # Modelos Pydantic para validación de datos
 class DetectionData(BaseModel):
@@ -83,12 +95,19 @@ async def readRoot():
 @app.get("/health")
 async def healthCheck():
     """Endpoint de salud del sistema"""
+    dbStatus = "connecting"
+    try:
+        isConnected = await checkDatabaseConnection()
+        dbStatus = "connected" if isConnected else "disconnected"
+    except Exception as e:
+        dbStatus = f"error: {str(e)}"
+    
     return {
         "status": "healthy",
         "service": "thermal-monitoring-api",
         "timestamp": datetime.now().isoformat(),
-        "database": "not_connected",
-        "iteration": "1"
+        "database": dbStatus,
+        "iteration": "2"
     }
 
 # Endpoint de prueba para estructura API
@@ -106,47 +125,62 @@ async def testEndpoint():
     }
 
 # Recibir detecciones del módulo de visión
-@app.post("/api/v1/detections")
-async def receiveDetection(detectionData: DetectionData):
+@app.post("/api/v1/detections", response_model=DetectionResponse)
+async def receiveDetection(
+    detectionData: DetectionCreate,
+    session: AsyncSession = Depends(getDbSession)
+):
     """
     Recibir detecciones del módulo de visión por computadora
-    En esta iteración retorna respuesta simulada
+    Guardar en base de datos MySQL
     """
-    return {
-        "status": "received",
-        "message": "Detección procesada correctamente",
-        "detectionId": "det_001",
-        "data": {
-            "detectionType": detectionData.detectionType,
-            "confidence": detectionData.confidence,
-            "cameraId": detectionData.cameraId or "THERMAL_CAM_001",
-            "processedAt": datetime.now().isoformat()
-        },
-        "nextAction": "correlation_analysis",
-        "iteration": "1"
-    }
+    # Crear nuevo registro en base de datos
+    newDetection = DetectionModel(
+        detectionType=detectionData.detectionType,
+        confidence=detectionData.confidence,
+        bboxX=detectionData.bboxX,
+        bboxY=detectionData.bboxY,
+        bboxWidth=detectionData.bboxWidth,
+        bboxHeight=detectionData.bboxHeight,
+        imagePath=detectionData.imagePath,
+        cameraId=detectionData.cameraId or "THERMAL_CAM_001",
+        timestamp=detectionData.timestamp or datetime.now(),
+        processed=False
+    )
+    
+    session.add(newDetection)
+    await session.commit()
+    await session.refresh(newDetection)
+    
+    return DetectionResponse.from_orm(newDetection)
 
 # Recibir datos meteorológicos
-@app.post("/api/v1/weather")
-async def receiveWeather(weatherData: WeatherData):
+@app.post("/api/v1/weather", response_model=WeatherDataResponse)
+async def receiveWeather(
+    weatherData: WeatherDataCreate,
+    session: AsyncSession = Depends(getDbSession)
+):
     """
     Recibir datos meteorológicos cada 5 minutos
-    En esta iteración retorna respuesta simulada
+    Guardar en base de datos MySQL
     """
-    return {
-        "status": "received",
-        "message": "Datos meteorológicos procesados correctamente",
-        "weatherId": "weather_001",
-        "data": {
-            "temperature": weatherData.temperature,
-            "humidity": weatherData.humidity,
-            "windSpeed": weatherData.windSpeed,
-            "sensorId": weatherData.sensorId or "DAVIS_V3_001",
-            "processedAt": datetime.now().isoformat()
-        },
-        "nextUpdate": "in_5_minutes",
-        "iteration": "1"
-    }
+    # Crear nuevo registro meteorológico
+    newWeatherData = WeatherModel(
+        temperature=weatherData.temperature,
+        humidity=weatherData.humidity,
+        windSpeed=weatherData.windSpeed,
+        windDirection=weatherData.windDirection,
+        pressure=weatherData.pressure,
+        rainfall=weatherData.rainfall,
+        sensorId=weatherData.sensorId or "DAVIS_V3_001",
+        timestamp=weatherData.timestamp or datetime.now()
+    )
+    
+    session.add(newWeatherData)
+    await session.commit()
+    await session.refresh(newWeatherData)
+    
+    return WeatherDataResponse.from_orm(newWeatherData)
 
 # Motor principal - Correlación de datos
 @app.get("/api/v1/analysis/correlation", response_model=CorrelationResult)

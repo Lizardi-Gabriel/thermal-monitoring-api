@@ -12,12 +12,50 @@ services:
       - API_HOST=${API_HOST}
       - API_PORT=${API_PORT}
       - LOG_LEVEL=${LOG_LEVEL}
+      - DATABASE_URL=${DATABASE_URL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    depends_on:
+      - mysql
+    restart: unless-stopped
+    networks:
+      - thermal-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: thermal-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password123
+      MYSQL_DATABASE: thermal_monitoring
+      MYSQL_USER: thermal_user
+      MYSQL_PASSWORD: thermal_pass123
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - thermal-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  adminer:
+    image: adminer:latest
+    container_name: thermal-adminer
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+    networks:
+      - thermal-network
     restart: unless-stopped
 
 volumes:
-  app_data:
+  mysql_data:
     driver: local
 
 networks:
-  default:
+  thermal-network:
     driver: bridge
