@@ -11,6 +11,7 @@ import uvicorn
 import os
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 # Cargar variables de entorno
 load_dotenv()

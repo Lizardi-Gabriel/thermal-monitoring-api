@@ -60,6 +60,7 @@ class WeatherDataResponse(WeatherDataBase):
     
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class WeatherDataList(BaseModel):
     """Modelo para lista de datos meteorológicos con paginación"""

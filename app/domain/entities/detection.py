@@ -52,6 +52,7 @@ class DetectionResponse(DetectionBase):
     
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class DetectionList(BaseModel):
     """Modelo para lista de detecciones con paginación"""
