@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    container_name: thermal-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DEBUG=${DEBUG}
+      - API_HOST=${API_HOST}
+      - API_PORT=${API_PORT}
+      - LOG_LEVEL=${LOG_LEVEL}
+    restart: unless-stopped
+
+volumes:
+  app_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
